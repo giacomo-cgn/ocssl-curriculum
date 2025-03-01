@@ -1,0 +1,46 @@
+{
+    "common_params":
+    {
+        "gpu-idx": 0,
+        "dataset": "cifar100",
+        "dataset-root": "/data/cossu/imagenet/imagenet",
+        "mb-passes": 1,
+        "tot-tr-steps": 15000,
+        "tr-mb-size": 128,
+        "repl-mb-size": 128,
+        "eval-mb-size": 256,
+        "save-folder": "./logs/curriculum",
+        "probing-separate": false,
+        "probing-torch": true,
+        "probing-rr": false,
+        "probing-all-exp": true,
+        "max-process": 1,
+        "online-transforms": true
+    },
+    "experiments":
+    [
+        {
+            "model": "simsiam",
+            "strategy" : "no_strategy",
+            "curriculum": [
+                {
+                    "type": "class_cumulative",
+                    "steps_ratio": 0.5,
+                    "num_tasks": 10
+                },
+                {
+                    "type": "subset_cumulative",
+                    "steps_ratio": 0.5,
+                    "start_subset_ratio": 0.1,
+                    "end_subset_ratio": 1.0,
+                    "num_tasks": 10
+
+                }
+            ],
+            "hyperparams_search": {
+                "lr": [0.1, 0.03, 0.01]
+            }
+        }
+        
+    ]
+}
