@@ -42,6 +42,7 @@ def exec_experiment(**kwargs):
     if kwargs['no_train']:
         folder_name = f'notrain_{kwargs["dataset"]}_{str_now}'
     else:
+        f'{kwargs["name"]}_{kwargs["strategy"]}_{kwargs["model"]}_{kwargs["dataset"]}_{str_now}'
         folder_name = f'{kwargs["strategy"]}_{kwargs["model"]}_{kwargs["dataset"]}_{str_now}'
     save_pth = os.path.join(kwargs["save_folder"], f'{folder_name}_{kwargs["name"]}')
     if not os.path.exists(save_pth):
@@ -307,13 +308,6 @@ def exec_experiment(**kwargs):
 
     else:
         raise Exception(f'Strategy {kwargs["strategy"]} not supported')
-
-    # FINO A QUI FATTO! 
-    # TODO: AGGIUNGI TRANSFORMATIONS DENTRO SupervisedDataset e UnsupervisedDataset -> DONE
-    # TODO: PARSE CURRICULUM LIST -> DONE
-    # TODO: PROBING
-    # TODO: TRAINER
-    # TODO: AGGIORNA ARGPARSER IN UTILS -> DONE
 
     # Set up the trainer wrapper
     trainer = Trainer(ssl_model=ssl_model, strategy=strategy, optim=kwargs["optim"], lr=kwargs["lr"], momentum=kwargs["optim_momentum"],

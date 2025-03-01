@@ -28,7 +28,7 @@ with open(original_args.config_path) as f:
 
     if "experiments" in config:
         log_dir = os.path.join(os.path.join(original_args.save_folder, f'{original_args.dataset}'),
-                               f'mbtr{original_args.tr_mb_size}_steps{original_args.tot_tr_steps}')
+                               f'tr{original_args.tr_mb_size}_steps{original_args.tot_tr_steps}')
 
 
         for experiment in config["experiments"]:
@@ -39,6 +39,13 @@ with open(original_args.config_path) as f:
 
             print(f"Running experiment: {experiment}")
             args = copy.deepcopy(original_args)
+
+            curr_names = ""
+            if "curriculum" in experiment:
+                for curriculum_part in experiment["curriculum"]:
+                    curr_names += f'{curriculum_part["type"]}-'
+            name += f'_{curr_names}'
+            args.__setattr__("name", name)
 
             if "hyperparams_search" in experiment:
                 # Hyperparameter search

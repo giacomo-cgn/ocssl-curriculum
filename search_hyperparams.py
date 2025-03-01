@@ -10,8 +10,6 @@ from main import exec_experiment
 
 def search_hyperparams(args, hyperparams_dict=None, parent_log_folder='./logs', experiment_name=''):
 
-     standalone_strategies = ['scale']
-
      if args.val_ratio == 0.0:
           print('WARNING! - val_ratio is 0, cannot execute hyperparams search. Exiting this experiment...')
           return
@@ -21,20 +19,14 @@ def search_hyperparams(args, hyperparams_dict=None, parent_log_folder='./logs', 
           # Define current searched hyperparams in lists
           hyperparams_dict = {
           'lr': [0.1, 0.01, 0.001, 0.0001],
-          # 'byol-momentum': [0.99, 0.999],
           }
           print('WARNING! - Hyperparams of the experiments not found, using default values:')
           print(hyperparams_dict)
      
      str_now = datetime.datetime.now().strftime("%d-%m-%y_%H:%M")
 
-     if args.strategy in standalone_strategies:
-          folder_name = f'hypertune_{experiment_name}_{args.strategy}_{str_now}'
-     else:     
-          folder_name = f'hypertune_{experiment_name}_{args.strategy}_{args.model}_{str_now}'
+     folder_name = f'hypertune_{experiment_name}_{args.strategy}_{args.model}_{str_now}'
      
-     if args.iid:
-          folder_name = f'hypertune_iid_{experiment_name}_{args.strategy}_{args.model}_{str_now}'
      save_folder = os.path.join(parent_log_folder, folder_name)
      if not os.path.exists(save_folder):
           os.makedirs(save_folder)
