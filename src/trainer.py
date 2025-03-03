@@ -81,7 +81,7 @@ class Trainer():
 
                 # Write loss file column names
                 with open(os.path.join(self.save_pth, 'pretr_loss.csv'), 'a') as f:
-                    f.write('loss,exp_idx,epoch,mb_idx,mb_pass\n')
+                    f.write('loss,tr_step,mb_pass\n')
 
 
     def train_experience(self, 
@@ -151,7 +151,7 @@ class Trainer():
 
                     # Check if have to evaluate IID model
                     if intermediate_eval_dict["status"]:
-                        if upto_tr_step_idx+1 % eval_every_steps == 0:
+                        if (upto_tr_step_idx+1) % eval_every_steps == 0:
                             exec_probing(kwargs=intermediate_eval_dict["kwargs"], probes=intermediate_eval_dict["probes"],
                                             probing_benchmark=intermediate_eval_dict["benchmark"], encoder=self.ssl_model.get_encoder_for_eval(), 
                                             pretr_exp_idx=eval_idx, probing_tr_ratio_arr=intermediate_eval_dict["probing_tr_ratio_arr"],

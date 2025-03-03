@@ -19,7 +19,7 @@ from src.trainer import Trainer
 
 from src.buffers import get_buffer
 
-from src.utils import write_final_scores, read_command_line_args, calculate_forgetting, save_avg_stream_acc
+from src.utils import write_final_scores, read_command_line_args, save_avg_stream_acc
 
 from src.get_datasets import get_benchmark
 
@@ -74,10 +74,6 @@ def exec_experiment(**kwargs):
             f.write(f'Pretrain init path: {kwargs["pretrain_init_pth"]}\n')
 
         f.write(f'-- Probing configs --\n')
-        f.write(f'Probing after all experiences: {kwargs["probing_all_exp"]}\n')
-        f.write(f'Probing on Separated exps: {kwargs["probing_separate"]}\n')
-        f.write(f'Probing on Up To current exps: {kwargs["probing_upto"]}\n')
-        f.write(f'Probing on all Joint exps: {kwargs["probing_joint"]}\n')
         f.write(f'Validation Ratio: {kwargs["val_ratio"]}\n')
         f.write(f'Probing Train Ratios: {probing_tr_ratio_arr}\n')
 
@@ -317,9 +313,6 @@ def exec_experiment(**kwargs):
                         save_model=kwargs["save_model_every_exp"], online_transforms=kwargs["online_transforms"], num_views=num_views)
 
     # Init probing
-    if kwargs["probing_upto"] and not kwargs["probing_all_exp"]:
-        raise Exception("Without --probing-all-exp, probing upto is equal to probing joint, please set --probing-upto to false or --probing-all-exp to true")
-    
     
     probes = []
     if kwargs["probing_rr"]:
@@ -337,7 +330,7 @@ def exec_experiment(**kwargs):
        
 
     
-    probing_benchmark = get_benchmark(kwargs["dataset"], kwargs["dataset_root"], 20, kwargs["dataset_seed"], val_ratio=0.1)
+    probing_benchmark, image_size = get_benchmark(kwargs["dataset"], kwargs["dataset_root"], 20, kwargs["dataset_seed"], val_ratio=0.1)
 
     training_time_tot = 0 
 
@@ -355,7 +348,7 @@ def exec_experiment(**kwargs):
         for exp_idx, curriculum_part in enumerate(curriculum):
             print(f'==== Beginning self supervised training for experience: {exp_idx} ====')
 
-            if kwargs["probing_all_exp"]:
+            if kwargs["intermediate_eval"]:
                 # Evaluate iid trained model during training (not only at the end)
                 intermediate_eval_dict = {
                     'status': True,
@@ -388,21 +381,11 @@ def exec_experiment(**kwargs):
     # Calculate and save final probing scores
     for probe in probes:
         probe_pth = os.path.join(save_pth, f'probe_{probe.get_name()}')
-        if kwargs['probing_separate']:
-            write_final_scores(probe=probe.get_name(), folder_input_path=os.path.join(probe_pth, 'probing_separate'),
-                            output_file=os.path.join(save_pth, 'final_scores_separate.csv'))
-        if kwargs['probing_joint']:
-            write_final_scores(probe=probe.get_name(), folder_input_path=os.path.join(probe_pth, 'probing_joint'),
-                            output_file=os.path.join(save_pth, 'final_scores_joint.csv'))
-            if kwargs["probing_all_exp"]:
-                save_avg_stream_acc(probe=probe.get_name(), save_pth=save_pth)
-
-        if kwargs['probing_upto'] and not kwargs["probing_joint"]:
-            write_final_scores(probe=probe.get_name(), folder_input_path=os.path.join(probe_pth, 'probing_upto'),
-                            output_file=os.path.join(save_pth, 'final_scores_joint.csv'))
-        #  Calculate forgetting
-        if kwargs["probing_separate"] and kwargs["probing_all_exp"] and not (kwargs["iid"] or kwargs["no_train"]):
-            calculate_forgetting(save_pth=probe_pth, num_exps=kwargs["num_exps"], probing_tr_ratio_arr=probing_tr_ratio_arr)
+        
+        write_final_scores(probe=probe.get_name(), folder_input_path=os.path.join(probe_pth, 'probing_joint'),
+                        output_file=os.path.join(save_pth, 'final_scores_joint.csv'))
+        if kwargs["intermediate_eval"]:
+            save_avg_stream_acc(probe=probe.get_name(), save_pth=save_pth)
 
         
     # Save final pretrained model
