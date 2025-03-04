@@ -107,59 +107,59 @@ class Trainer():
         self.strategy.before_experience()
         
         for tr_step_idx in tqdm(range(exp_tr_steps)):
-                upto_tr_step_idx = before_tr_steps + tr_step_idx
-                
-                stream_mbatch = data_loader.__iter__().__next__()
+            upto_tr_step_idx = before_tr_steps + tr_step_idx
+            
+            stream_mbatch = data_loader.__iter__().__next__()
+            if self.online_transforms:
+                stream_mbatch = stream_mbatch.to(self.device)
+            else:
+                stream_mbatch = [x.to(self.device) for x in stream_mbatch]
+
+            stream_mbatch = self.strategy.before_mb_passes(stream_mbatch)
+
+            for k in range(self.mb_passes):
+                # Apply strategy modifications before forward pass (e.g. concat replay samples from buffer)
+                mbatch = self.strategy.before_forward(stream_mbatch)
+
+                # Apply transforms, obtains a list of tensors, each containing 1 view for every sample in the mbatch
                 if self.online_transforms:
-                    stream_mbatch = stream_mbatch.to(self.device)
+                    x_views_list = self.transforms(mbatch)
                 else:
-                    stream_mbatch = [x.to(self.device) for x in stream_mbatch]
+                    x_views_list = mbatch
 
-                stream_mbatch = self.strategy.before_mb_passes(stream_mbatch)
+                x_views_list = self.strategy.after_transforms(x_views_list)
 
-                for k in range(self.mb_passes):
-                    # Apply strategy modifications before forward pass (e.g. concat replay samples from buffer)
-                    mbatch = self.strategy.before_forward(stream_mbatch)
+                # Forward pass of SSL model (z: projector features, e: encoder features)
+                loss, z_list, e_list = self.ssl_model(x_views_list)
 
-                    # Apply transforms, obtains a list of tensors, each containing 1 view for every sample in the mbatch
-                    if self.online_transforms:
-                        x_views_list = self.transforms(mbatch)
-                    else:
-                        x_views_list = mbatch
+                # Strategy after forward pass
+                loss_strategy = self.strategy.after_forward(x_views_list, loss, z_list, e_list)
 
-                    x_views_list = self.strategy.after_transforms(x_views_list)
+                if loss_strategy is not None:
+                    # Backward pass
+                    self.optimizer.zero_grad()
+                    loss_strategy.backward()
+                    self.optimizer.step()
 
-                    # Forward pass of SSL model (z: projector features, e: encoder features)
-                    loss, z_list, e_list = self.ssl_model(x_views_list)
+                self.ssl_model.after_backward()
+                self.strategy.after_backward()
 
-                    # Strategy after forward pass
-                    loss_strategy = self.strategy.after_forward(x_views_list, loss, z_list, e_list)
+                # Save loss, exp_idx, epoch, mb_idx and k in csv
+                if self.save_pth is not None and loss_strategy is not None:
+                    with open(os.path.join(self.save_pth, 'pretr_loss.csv'), 'a') as f:
+                        f.write(f'{loss_strategy.item()},{upto_tr_step_idx},{k}\n')
 
-                    if loss_strategy is not None:
-                        # Backward pass
-                        self.optimizer.zero_grad()
-                        loss_strategy.backward()
-                        self.optimizer.step()
+                # Check if have to evaluate IID model
+                if intermediate_eval_dict["status"]:
+                    if (upto_tr_step_idx+1) % eval_every_steps == 0:
+                        exec_probing(kwargs=intermediate_eval_dict["kwargs"], probes=intermediate_eval_dict["probes"],
+                                        probing_benchmark=intermediate_eval_dict["benchmark"], encoder=self.ssl_model.get_encoder_for_eval(), 
+                                        pretr_exp_idx=eval_idx, probing_tr_ratio_arr=intermediate_eval_dict["probing_tr_ratio_arr"],
+                                        save_pth=self.save_pth)
+                        eval_idx += 1
+                    self.ssl_model.train()
 
-                    self.ssl_model.after_backward()
-                    self.strategy.after_backward()
-
-                    # Save loss, exp_idx, epoch, mb_idx and k in csv
-                    if self.save_pth is not None and loss_strategy is not None:
-                        with open(os.path.join(self.save_pth, 'pretr_loss.csv'), 'a') as f:
-                            f.write(f'{loss_strategy.item()},{upto_tr_step_idx},{k}\n')
-
-                    # Check if have to evaluate IID model
-                    if intermediate_eval_dict["status"]:
-                        if (upto_tr_step_idx+1) % eval_every_steps == 0:
-                            exec_probing(kwargs=intermediate_eval_dict["kwargs"], probes=intermediate_eval_dict["probes"],
-                                            probing_benchmark=intermediate_eval_dict["benchmark"], encoder=self.ssl_model.get_encoder_for_eval(), 
-                                            pretr_exp_idx=eval_idx, probing_tr_ratio_arr=intermediate_eval_dict["probing_tr_ratio_arr"],
-                                            save_pth=self.save_pth)
-                            eval_idx += 1
-                        self.ssl_model.train()
-
-                self.strategy.after_mb_passes()
+            self.strategy.after_mb_passes()
 
         # Save model and optimizer state
         if self.save_model and self.save_pth is not None:
