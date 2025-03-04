@@ -204,6 +204,7 @@ def read_command_line_args():
     parser.add_argument('--probing-rr', type=str_to_bool, default=True)
     parser.add_argument('--probing-knn', type=str_to_bool, default=False)
     parser.add_argument('--probing-torch', type=str_to_bool, default=True)
+    parser.add_argument('--probing-joint', type=str_to_bool, default=True)
     parser.add_argument('--val-ratio', type=float, default=0.1)
     parser.add_argument('--use-probing-tr-ratios', type=str_to_bool, default=False)
     parser.add_argument('--knn-k', type=int, default=50)
