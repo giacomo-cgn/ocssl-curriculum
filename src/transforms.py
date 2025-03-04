@@ -51,8 +51,7 @@ def get_common_transforms(dataset: str = 'cifar100'):
             crop,
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomApply(
-                [transforms.Lambda(clamp_transform),
-                transforms.ColorJitter(brightness=0.4, contrast=0.4,
+                [transforms.ColorJitter(brightness=0.4, contrast=0.4,
                                         saturation=0.2, hue=0.1)],
                 p=0.8
             ),
