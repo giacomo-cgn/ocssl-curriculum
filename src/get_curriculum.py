@@ -58,7 +58,7 @@ def get_curriculum(curriculum_order_list,
             current_subset, _ = subset_splitter.subset(iid_dataset, start_subset_len, len(iid_dataset) - start_subset_len)
             curriculum.append(CurriculumTask(current_subset, f'cumulative subset: {curriculum_part["start_subset_ratio"]}', steps))
 
-            for subset_ratio in enumerate(np.linspace(curriculum_part['start_subset_ratio']+ratio_increment, curriculum_part['end_subset_ratio'], num_tasks)):
+            for j, subset_ratio in enumerate(np.linspace(curriculum_part['start_subset_ratio']+ratio_increment, curriculum_part['end_subset_ratio'], num_tasks)):
                 additional_len = int(ratio_increment*len(iid_dataset))
                 remaining_indices = list(set(range(len(iid_dataset))) - set(current_subset.indices))
                 remaining_dataset = Subset(iid_dataset, remaining_indices)
