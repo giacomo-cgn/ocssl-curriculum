@@ -7,6 +7,7 @@ from torch.utils.data import ConcatDataset
 
 from . import AbstractProbe
 from ..benchmark import Benchmark 
+from .analyze_collpase import analyze_collapse
 
 
 def exec_probing(kwargs: Dict,
@@ -44,3 +45,11 @@ def exec_probing(kwargs: Dict,
             else:
                 probe.probe(encoder=encoder, tr_dataset=probe_joint_dataset_tr, test_dataset=probe_joint_dataset_test,
                             tr_samples_ratio=probing_tr_ratio, save_file=probe_save_file, dataset_name=probing_benchmark.dataset_name)
+               
+    if kwargs["analyze_collapse"]:
+        collapse_pth = os.path.join(save_pth, 'collapse', f'pretr_exp_{pretr_exp_idx}')
+        if not os.path.exists(collapse_pth):
+            os.makedirs(collapse_pth)
+        if kwargs['val_ratio'] > 0:
+            analyze_collapse(encoder=encoder, test_dataset=probe_joint_dataset_test, val_dataset=probe_joint_dataset_val,
+                             mb_size=kwargs["eval_mb_size"], device=probe.device, save_path=collapse_pth, dataset_name=probing_benchmark.dataset_name)

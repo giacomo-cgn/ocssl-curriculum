@@ -260,6 +260,9 @@ def read_command_line_args():
     # Buffer Features update with EMA param (originally alpha from minred)
     parser.add_argument('--features-buffer-ema', type=float, default=0.5)
 
+    # Further analysis params
+    parser.add_argument('--analyze-collapse', type=str_to_bool, default=False)
+
     args = parser.parse_args()
 
     return args
