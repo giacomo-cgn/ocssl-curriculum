@@ -80,6 +80,8 @@ def exec_experiment(**kwargs):
         f.write(f'-- Curriculum configs --\n')
         f.write(f'total training steps: {kwargs["tot_tr_steps"]}\n')
         f.write(f'Intermediate evaluation: {kwargs["intermediate_eval"]}\n')
+        f.write(f'Eval every steps: {kwargs["eval_every_steps"]}\n')
+        f.write(f'Curriculum: {kwargs["curriculum"]}\n')
 
 
     curriculum, image_size = get_curriculum(
