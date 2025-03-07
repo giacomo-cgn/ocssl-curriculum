@@ -12,6 +12,7 @@ from ..utils import SupervisedDataset
 from . import AbstractProbe
 from ..benchmark import Benchmark 
 from .analyze_collpase import analyze_collapse
+from .prototype_drift import prototype_drift
 
 
 def exec_probing(kwargs: Dict,
@@ -20,7 +21,9 @@ def exec_probing(kwargs: Dict,
                  encoder: torch.nn,
                  pretr_exp_idx: int,
                  save_pth: str,
-                 device: str
+                 device: str,
+                 prev_classes: List[int] = None,
+                 curr_classes: List[int] = None,
                  ):
     
     probe_joint_dataset_tr = ConcatDataset(probing_benchmark.train_stream)
@@ -54,12 +57,22 @@ def exec_probing(kwargs: Dict,
 
                
     if kwargs["analyze_collapse"]:
+        print(f'==== Analyzing Collapse ==== ')
         collapse_pth = os.path.join(save_pth, 'collapse', f'pretr_exp_{pretr_exp_idx}')
         if not os.path.exists(collapse_pth):
             os.makedirs(collapse_pth)
-        if kwargs['val_ratio'] > 0:
-            analyze_collapse(tr_activations=tr_activations, tr_labels=tr_labels, val_activations=val_activations,
-                val_labels=val_labels, test_activations=test_activations, test_labels=test_labels, save_path=collapse_pth)
+        analyze_collapse(tr_activations=tr_activations, tr_labels=tr_labels, val_activations=val_activations,
+            val_labels=val_labels, test_activations=test_activations, test_labels=test_labels, save_path=collapse_pth)
+            
+    
+    if kwargs['analyze_drift']:
+        print(f'==== Analyzing Drift ==== ')
+        drift_pth = os.path.join(save_pth, 'drift')
+
+        prototype_drift(tr_activations=tr_activations, tr_labels=tr_labels, val_activations=val_activations,
+                        val_labels=val_labels, test_activations=test_activations, test_labels=test_labels,
+                        save_path=drift_pth, pretr_exp_idx=pretr_exp_idx, previous_classes=prev_classes, current_classes=curr_classes)
+
             
 
 

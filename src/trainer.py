@@ -152,9 +152,11 @@ class Trainer():
                 # Check if have to evaluate IID model
                 if intermediate_eval_dict["status"]:
                     if (upto_tr_step_idx+1) % eval_every_steps == 0:
+                        current_classes = exp_data.get_classes()
                         exec_probing(kwargs=intermediate_eval_dict["kwargs"], probes=intermediate_eval_dict["probes"],
                                         probing_benchmark=intermediate_eval_dict["benchmark"], encoder=self.ssl_model.get_encoder_for_eval(), 
-                                        pretr_exp_idx=eval_idx, save_pth=self.save_pth, device=self.device)
+                                        pretr_exp_idx=eval_idx, save_pth=self.save_pth, device=self.device,
+                                        prev_classes=intermediate_eval_dict["prev_classes"], curr_classes=current_classes)
                         eval_idx += 1
                     self.ssl_model.train()
 
@@ -170,4 +172,4 @@ class Trainer():
                 'optimizer_state_dict': self.optimizer.state_dict()
             }, os.path.join(chkpt_pth, f'model_exp{exp_idx}.pth'))
 
-        return self.ssl_model, eval_idx
+        return self.ssl_model, eval_idx, current_classes

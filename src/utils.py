@@ -19,6 +19,14 @@ class UnsupervisedDataset(Dataset):
 
     def __len__(self):
         return len(self.data)
+    
+    def get_classes(self):
+        # Extract the labels as Python numbers from each tuple
+        labels = [sample[1] for sample in self.data]
+        # Create a sorted list of unique labels
+        unique_labels = sorted(list(set(labels)))
+        return unique_labels
+        
 
     def __getitem__(self, idx):
         input_tensor, _, _ = self.data[idx]
@@ -255,6 +263,7 @@ def read_command_line_args():
 
     # Further analysis params
     parser.add_argument('--analyze-collapse', type=str_to_bool, default=False)
+    parser.add_argument('--analyze-drift', type=str_to_bool, default=False)
 
     args = parser.parse_args()
 

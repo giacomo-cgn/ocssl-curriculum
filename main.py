@@ -23,6 +23,8 @@ from src.utils import write_final_scores, read_command_line_args, save_avg_strea
 
 from src.get_datasets import get_benchmark
 
+from src.probing.prototype_drift import drift_plot
+
 import time
 
 def exec_experiment(**kwargs):
@@ -338,6 +340,7 @@ def exec_experiment(**kwargs):
         eval_idx = 0
 
         training_time_start = time.time()
+        prev_classes = None
         for exp_idx, curriculum_part in enumerate(curriculum):
             print(f'==== Beginning self supervised training for experience: {exp_idx} ====')
 
@@ -348,6 +351,7 @@ def exec_experiment(**kwargs):
                     'kwargs': kwargs,
                     'probes': probes,
                     'benchmark': probing_benchmark,
+                    'prev_classes': prev_classes
                 }
             else:
                 intermediate_eval_dict = {
@@ -355,7 +359,7 @@ def exec_experiment(**kwargs):
                 }
 
 
-            trained_ssl_model, eval_idx = trainer.train_experience(curriculum_part.dataset, curriculum_part.tr_steps, exp_idx,
+            trained_ssl_model, eval_idx, prev_classes = trainer.train_experience(curriculum_part.dataset, curriculum_part.tr_steps, exp_idx,
                                                                    before_tr_steps, kwargs["eval_every_steps"], eval_idx,
                                                                    intermediate_eval_dict)
             training_time_tot += time.time() - training_time_start
@@ -391,6 +395,11 @@ def exec_experiment(**kwargs):
         else:
             torch.save(trained_ssl_model.state_dict(),
                     os.path.join(chkpt_pth, f'final_model_state.pth'))
+
+    try: 
+        drift_plot(os.path.join(save_pth, 'drift'))
+    except Exception as e:
+        print(f'Error in displaying drift plot: {e}')
 
 
     return save_pth
