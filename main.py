@@ -28,14 +28,6 @@ import time
 def exec_experiment(**kwargs):
     buffer_free_strategies = ['no_strategy', 'aep', 'cassle']
 
-
-    # Ratios of tr set used for training linear probe
-    if kwargs["use_probing_tr_ratios"]:
-        probing_tr_ratio_arr = [0.05, 0.1, 0.5, 1]
-    else:
-        probing_tr_ratio_arr = [1]
-
-
     # Set up save folders
     str_now = datetime.datetime.now().strftime("%d-%m-%y_%H:%M")
 
@@ -75,7 +67,6 @@ def exec_experiment(**kwargs):
 
         f.write(f'-- Probing configs --\n')
         f.write(f'Validation Ratio: {kwargs["val_ratio"]}\n')
-        f.write(f'Probing Train Ratios: {probing_tr_ratio_arr}\n')
 
         f.write(f'-- Curriculum configs --\n')
         f.write(f'total training steps: {kwargs["tot_tr_steps"]}\n')
@@ -339,7 +330,7 @@ def exec_experiment(**kwargs):
     if kwargs["no_train"]:
         # No SSL training is done, only using the randomly initialized encoder as feature extractor
         exec_probing(kwargs=kwargs, probes=probes, probing_benchmark=probing_benchmark, encoder=encoder, pretr_exp_idx=0,
-                     probing_tr_ratio_arr=probing_tr_ratio_arr, save_pth=save_pth)
+                     save_pth=save_pth, device=device)
 
     else:
         # Self supervised training over the experiences
@@ -357,7 +348,6 @@ def exec_experiment(**kwargs):
                     'kwargs': kwargs,
                     'probes': probes,
                     'benchmark': probing_benchmark,
-                    'probing_tr_ratio_arr': probing_tr_ratio_arr,
                 }
             else:
                 intermediate_eval_dict = {
@@ -373,7 +363,7 @@ def exec_experiment(**kwargs):
         if not kwargs["intermediate_eval"]:
             # Probe only at the end of training
             exec_probing(kwargs=kwargs, probes=probes, probing_benchmark=probing_benchmark, encoder=trained_ssl_model.get_encoder_for_eval(), 
-                     pretr_exp_idx=eval_idx, probing_tr_ratio_arr=probing_tr_ratio_arr, save_pth=save_pth)
+                     pretr_exp_idx=eval_idx, save_pth=save_pth, device=device)
             
     # Save training time
             with open(os.path.join(save_pth, 'training_time.txt'), 'w') as f:
