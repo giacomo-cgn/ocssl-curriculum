@@ -3,8 +3,12 @@ import torch
 from torch.utils.data import ConcatDataset
 from typing import List, Dict
 
-from torch.utils.data import ConcatDataset
+import torch
+from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data.dataset import Dataset
+from torch import nn
 
+from ..utils import SupervisedDataset
 from . import AbstractProbe
 from ..benchmark import Benchmark 
 from .analyze_collpase import analyze_collapse
@@ -15,41 +19,108 @@ def exec_probing(kwargs: Dict,
                  probing_benchmark: Benchmark,
                  encoder: torch.nn,
                  pretr_exp_idx: int,
-                 probing_tr_ratio_arr: List[float],
                  save_pth: str,
+                 device: str
                  ):
     
+    probe_joint_dataset_tr = ConcatDataset(probing_benchmark.train_stream)
+    probe_joint_dataset_test = ConcatDataset(probing_benchmark.test_stream)
+    if kwargs['val_ratio'] > 0:
+        probe_joint_dataset_val = ConcatDataset(probing_benchmark.valid_stream)
+    else:
+        probe_joint_dataset_val = None
+    
+    tr_activations, tr_labels, val_activations, val_labels, test_activations, test_labels = extract_representations(
+        encoder=encoder,
+        tr_dataset=probe_joint_dataset_tr,
+        val_dataset=probe_joint_dataset_val,
+        test_dataset=probe_joint_dataset_test,
+        dataset_name=probing_benchmark.dataset_name,
+        device=device,
+        mb_size=kwargs['eval_mb_size'],
+    )
+    
     for probe in probes:
-        probe_save_pth = probe_save_pth = os.path.join(save_pth, f'probe_{probe.get_name()}')
+        probe_save_pth = os.path.join(save_pth, f'probe_{probe.get_name()}', 'probing_joint')
+        if not os.path.exists(probe_save_pth):
+            os.makedirs(probe_save_pth)
+        probe_save_file = os.path.join(probe_save_pth, f'probe_exp_{pretr_exp_idx}.csv')
+
         print(f'==== Probe {probe.get_name()} ==== ')
-                
-        # PROBING JOINT
-        probe_joint_dataset_tr = ConcatDataset(probing_benchmark.train_stream)
-        probe_joint_dataset_test = ConcatDataset(probing_benchmark.test_stream)
-        if kwargs['val_ratio'] > 0:
-            probe_joint_dataset_val = ConcatDataset(probing_benchmark.valid_stream)
 
-        for probing_tr_ratio in probing_tr_ratio_arr:
-            # Create probing accuracy log file
-            pth = os.path.join(probe_save_pth, f'probing_joint/probing_ratio{probing_tr_ratio}')
-            if not os.path.exists(pth):
-                os.makedirs(pth)
-            probe_save_file = os.path.join(pth, f'probe_exp_{pretr_exp_idx}.csv')
-                                        
-            print(f'-- Joint Probing, probe tr ratio: {probing_tr_ratio} --')
+        probe.probe(tr_activations=tr_activations, tr_labels=tr_labels, val_activations=val_activations,
+                    val_labels=val_labels, test_activations=test_activations, test_labels=test_labels,
+                    save_file=probe_save_file)
 
-            if kwargs['val_ratio'] > 0:
-                probe.probe(encoder=encoder, tr_dataset=probe_joint_dataset_tr, test_dataset=probe_joint_dataset_test,
-                            val_dataset=probe_joint_dataset_val, tr_samples_ratio=probing_tr_ratio,
-                            save_file=probe_save_file, dataset_name=probing_benchmark.dataset_name)
-            else:
-                probe.probe(encoder=encoder, tr_dataset=probe_joint_dataset_tr, test_dataset=probe_joint_dataset_test,
-                            tr_samples_ratio=probing_tr_ratio, save_file=probe_save_file, dataset_name=probing_benchmark.dataset_name)
                
     if kwargs["analyze_collapse"]:
         collapse_pth = os.path.join(save_pth, 'collapse', f'pretr_exp_{pretr_exp_idx}')
         if not os.path.exists(collapse_pth):
             os.makedirs(collapse_pth)
         if kwargs['val_ratio'] > 0:
-            analyze_collapse(encoder=encoder, test_dataset=probe_joint_dataset_test, val_dataset=probe_joint_dataset_val,
-                             mb_size=kwargs["eval_mb_size"], device=probe.device, save_path=collapse_pth, dataset_name=probing_benchmark.dataset_name)
+            analyze_collapse(tr_activations=tr_activations, tr_labels=tr_labels, val_activations=val_activations,
+                val_labels=val_labels, test_activations=test_activations, test_labels=test_labels, save_path=collapse_pth)
+            
+
+
+# Extract representations of the training set and test set
+def extract_representations(encoder: nn,
+                            tr_dataset: Dataset,
+                            test_dataset: Dataset,
+                            val_dataset: Dataset = None,
+                            dataset_name: str = 'cifar100',
+                            device: str = 'cpu',
+                            mb_size: int = 512,
+                            ):
+    tr_dataset = SupervisedDataset(tr_dataset, dataset_name)
+    train_loader = DataLoader(dataset=tr_dataset, batch_size=mb_size, shuffle=True, num_workers=8)
+    test_dataset = SupervisedDataset(test_dataset, dataset_name)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=mb_size, shuffle=False, num_workers=8)
+    if val_dataset is not None:
+        val_dataset = SupervisedDataset(val_dataset, dataset_name)
+        val_loader = DataLoader(dataset=val_dataset, batch_size=mb_size, shuffle=False, num_workers=8)
+
+
+    print('EVALUATION: Extracting representations...')
+    with torch.no_grad():
+        # Put encoder in eval mode, as even with no gradient it could interfere with batchnorm
+        encoder.eval()
+
+        # Get encoder activations for tr dataloader
+        tr_activations_list = []
+        tr_labels_list = []
+        for inputs, labels in train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            activations = encoder(inputs)
+            tr_activations_list.append(activations.detach())
+            tr_labels_list.append(labels.detach())
+        tr_activations = torch.cat(tr_activations_list, dim=0)
+        tr_labels = torch.cat(tr_labels_list, dim=0)
+
+        if val_dataset is not None:
+            # Get encoder activations for val dataloader
+            val_activations_list = []
+            val_labels_list = []
+            for inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                activations = encoder(inputs)
+                val_activations_list.append(activations.detach())
+                val_labels_list.append(labels.detach())
+            val_activations = torch.cat(val_activations_list, dim=0)
+            val_labels = torch.cat(val_labels_list, dim=0)
+        else:
+            val_activations = None
+            val_labels = None
+
+        # Get encoder activations for test dataloader
+        test_activations_list = []
+        test_labels_list = []
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            activations = encoder(inputs)
+            test_activations_list.append(activations.detach())
+            test_labels_list.append(labels.detach())
+        test_activations = torch.cat(test_activations_list, dim=0)
+        test_labels = torch.cat(test_labels_list, dim=0)
+
+    return tr_activations, tr_labels, val_activations, val_labels, test_activations, test_labels

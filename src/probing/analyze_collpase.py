@@ -2,65 +2,36 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-
-from ..utils import SupervisedDataset
 
 
-def analyze_collapse(encoder: nn,
-                     test_dataset: Dataset,
-                     val_dataset: Dataset = None,
-                     mb_size: int = 256,
-                     device: str = 'cpu',
+def analyze_collapse(tr_activations: torch.Tensor,
+                     tr_labels: torch.Tensor,
+                     test_activations: torch.Tensor,
+                     test_labels: torch.Tensor,
+                     val_activations: torch.Tensor = None,
+                     val_labels: torch.Tensor = None,
                      save_path: str = None,
-                     dataset_name: str = 'cifar100',
               ):
-            
-    test_dataset = SupervisedDataset(test_dataset, dataset_name)
-    test_loader = DataLoader(dataset=test_dataset, batch_size=mb_size, shuffle=False, num_workers=8)
-    if val_dataset is not None:
-        val_dataset = SupervisedDataset(val_dataset, dataset_name)
-        val_loader = DataLoader(dataset=val_dataset, batch_size=mb_size, shuffle=False, num_workers=8)
+    
 
-    print('=== Analyzing collapse ... ===')
-
-    with torch.no_grad():
-        # Put encoder in eval mode, as even with no gradient it could interfere with batchnorm
-        encoder.eval()    # Get encoder activations for val dataloader
-
-        if val_dataset is not None:
-            val_activations_list = []
-            val_labels_list = []
-            for inputs, labels in val_loader:
-                inputs, labels = inputs.to(device), labels.to(device)
-                activations = encoder(inputs)
-                val_activations_list.append(activations.detach())
-                val_labels_list.append(labels.detach())
-            val_activations = torch.cat(val_activations_list, dim=0).cpu()
-            val_labels = torch.cat(val_labels_list, dim=0).cpu()
-
-        # Get encoder activations for test dataloader
-        test_activations_list = []
-        test_labels_list = []
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            activations = encoder(inputs)
-            test_activations_list.append(activations.detach())
-            test_labels_list.append(labels.detach())
-        test_activations = torch.cat(test_activations_list, dim=0).cpu()
-        test_labels = torch.cat(test_labels_list, dim=0).cpu()
+    tr_activations = tr_activations.cpu()
+    tr_labels = tr_labels.cpu()
+    test_activations = test_activations.cpu()
+    test_labels = test_labels.cpu()
+    if val_activations is not None:
+        val_activations = val_activations.cpu()
+        val_labels = val_labels.cpu()
 
         # ------------- Class agnostic collapse -----------------
         test_svd = get_svd(test_activations)
-        if val_dataset is not None:
+        if val_activations is not None:
             val_svd = get_svd(val_activations)
 
         plt.figure(figsize=(15,5))
     
         plt.subplot(1,3,1)
         plt.plot(test_svd, label='Test')
-        if val_dataset is not None:
+        if val_activations is not None:
             plt.plot(val_svd, label='Validation')
         plt.legend()
         plt.xlabel("Sorted singular value index")
@@ -69,7 +40,7 @@ def analyze_collapse(encoder: nn,
 
         plt.subplot(1,3,2)
         plt.plot(test_svd/test_svd[0], label='Test')
-        if val_dataset is not None:
+        if val_activations is not None:
             plt.plot(val_svd/val_svd[0], label='Validation')
         plt.legend()
         plt.xlabel("Sorted singular value index")
@@ -78,7 +49,7 @@ def analyze_collapse(encoder: nn,
 
         plt.subplot(1,3,3)
         plt.plot(np.cumsum(test_svd) / test_svd.sum(), label='Test')
-        if val_dataset is not None:
+        if val_activations is not None:
             plt.plot(np.cumsum(val_svd) / val_svd.sum(),  label='Validation')
         plt.legend()
         plt.xlabel("Sorted singular value index")
@@ -90,7 +61,7 @@ def analyze_collapse(encoder: nn,
 
         with open(os.path.join(save_path, 'class_agnostic_auc.txt'), 'a') as f:
             f.write(f'Test AUC: {auc(test_svd):.4f}\n')
-            if val_dataset is not None:
+            if val_activations is not None:
                 f.write(f'Validation AUC: {auc(val_svd):.4f}\n')
 
         # --------- Class specific collapse -------------
@@ -100,7 +71,7 @@ def analyze_collapse(encoder: nn,
         for label in range(np.abs(test_labels).max()+1):
             test_svd = get_svd(test_activations[test_labels == label])
             class_test_svd.append(test_svd)
-            if val_dataset is not None:
+            if val_activations is not None:
                 val_svd = get_svd(val_activations[val_labels == label])
                 class_val_svd.append(val_svd)
 
@@ -160,7 +131,7 @@ def analyze_collapse(encoder: nn,
         plt.cla()
 
         with open(os.path.join(save_path, 'class_specific_auc.csv'), 'a') as f:
-            if val_dataset is not None:
+            if val_activations is not None:
                 f.write(f'class,val_auc,test_auc\n')
                 for label, (val_svd, test_svd) in enumerate(zip(class_val_svd, class_test_svd)):
                     f.write(f'{label},{auc(val_svd):.4f},{auc(test_svd):.4f}\n')

@@ -51,8 +51,6 @@ def multiple_runs(args, seeds, parent_log_folder='./logs', experiment_name=''):
                if args.__dict__[f'probing_{probing_config}']:
                     results_df = pd.read_csv(os.path.join(experiment_save_folder, f'final_scores_{probing_config}.csv'))
                     break
-          # Only row with probe_ratio = 1
-          results_df = results_df[results_df['probe_ratio'] == 1]
           # Select preferred probe type
           probe_type_preferences = ["torch", "rr", "knn"]
           for probe_type in probe_type_preferences:

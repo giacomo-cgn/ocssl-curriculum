@@ -54,44 +54,43 @@ def update_ema_params(model_params, ema_model_params, momentum):
             pm.data.mul_(momentum).add_(po.data, alpha=(1. - momentum))
 
 
-def calculate_forgetting(save_pth, num_exps, probing_tr_ratio_arr=[1]):
+def calculate_forgetting(save_pth, num_exps):
      # Init forgetting
     forgetting_val = Forgetting()
     forgetting_test = Forgetting()
-    for probe_tr_ratio in probing_tr_ratio_arr:
-        separate_pth = os.path.join(save_pth, f'probing_separate/probing_ratio{probe_tr_ratio}')
-        forgetting_folder = os.path.join(save_pth, f'forgetting/probing_ratio{probe_tr_ratio}')
-        if not os.path.exists(forgetting_folder):
-            os.makedirs(forgetting_folder)
+    separate_pth = os.path.join(save_pth, f'probing_separate')
+    forgetting_folder = os.path.join(save_pth, f'forgetting')
+    if not os.path.exists(forgetting_folder):
+        os.makedirs(forgetting_folder)
+    with open(os.path.join(forgetting_folder, 'forgetting.csv'), 'a') as f:
+        f.write('exp_idx,val_forgetting,test_forgetting\n')
+    final_df = pd.read_csv(os.path.join(separate_pth, f'probe_exp_{num_exps-1}.csv'))
+    for exp_idx in range(num_exps):
+        initial_df = pd.read_csv(os.path.join(separate_pth, f'probe_exp_{exp_idx}.csv'))
+        # Take the row where probing_exp_idx = exp_idx  
+        initial_score_val = initial_df[initial_df['probing_exp_idx'] == exp_idx]['val_acc'].values[0]
+        initial_score_test = initial_df[initial_df['probing_exp_idx'] == exp_idx]['test_acc'].values[0]
+        forgetting_val.update_initial(k=exp_idx, v=initial_score_val)
+        forgetting_test.update_initial(k=exp_idx, v=initial_score_test)
+        final_score_val = final_df[final_df['probing_exp_idx'] == exp_idx]['val_acc'].values[0]
+        final_score_test = final_df[final_df['probing_exp_idx'] == exp_idx]['test_acc'].values[0]
+        forgetting_val.update_last(k=exp_idx, v=final_score_val)
+        forgetting_test.update_last(k=exp_idx, v=final_score_test)
+
         with open(os.path.join(forgetting_folder, 'forgetting.csv'), 'a') as f:
-            f.write('exp_idx,val_forgetting,test_forgetting\n')
-        final_df = pd.read_csv(os.path.join(separate_pth, f'probe_exp_{num_exps-1}.csv'))
-        for exp_idx in range(num_exps):
-            initial_df = pd.read_csv(os.path.join(separate_pth, f'probe_exp_{exp_idx}.csv'))
-            # Take the row where probing_exp_idx = exp_idx  
-            initial_score_val = initial_df[initial_df['probing_exp_idx'] == exp_idx]['val_acc'].values[0]
-            initial_score_test = initial_df[initial_df['probing_exp_idx'] == exp_idx]['test_acc'].values[0]
-            forgetting_val.update_initial(k=exp_idx, v=initial_score_val)
-            forgetting_test.update_initial(k=exp_idx, v=initial_score_test)
-            final_score_val = final_df[final_df['probing_exp_idx'] == exp_idx]['val_acc'].values[0]
-            final_score_test = final_df[final_df['probing_exp_idx'] == exp_idx]['test_acc'].values[0]
-            forgetting_val.update_last(k=exp_idx, v=final_score_val)
-            forgetting_test.update_last(k=exp_idx, v=final_score_test)
+            f.write(f'{exp_idx},{forgetting_val.result()[exp_idx]},{forgetting_test.result()[exp_idx]}\n')
 
-            with open(os.path.join(forgetting_folder, 'forgetting.csv'), 'a') as f:
-                f.write(f'{exp_idx},{forgetting_val.result()[exp_idx]},{forgetting_test.result()[exp_idx]}\n')
-
-        with open(os.path.join(forgetting_folder, 'avg_forgetting.csv'), 'a') as f:
-            f.write('val_avg_forgetting,test_avg_forgetting\n')
-            avg_val = sum(forgetting_val.result().values()) / len(forgetting_val.result().values())
-            avg_test = sum(forgetting_test.result().values()) / len(forgetting_test.result().values())
-            f.write(f'{avg_val},{avg_test}\n')
+    with open(os.path.join(forgetting_folder, 'avg_forgetting.csv'), 'a') as f:
+        f.write('val_avg_forgetting,test_avg_forgetting\n')
+        avg_val = sum(forgetting_val.result().values()) / len(forgetting_val.result().values())
+        avg_test = sum(forgetting_test.result().values()) / len(forgetting_test.result().values())
+        f.write(f'{avg_val},{avg_test}\n')
 
 def save_avg_stream_acc(probe, save_pth):
     """
         Calculate and save avg joint accuracy across the stream.
     """
-    probing_folder = os.path.join(save_pth, f'probe_{probe}/probing_joint/probing_ratio1')
+    probing_folder = os.path.join(save_pth, f'probe_{probe}/probing_joint')
 
     val_acc_list, test_acc_list = [], []
     for file in os.listdir(probing_folder):
@@ -120,32 +119,26 @@ def write_final_scores(probe, folder_input_path, output_file):
     with open(output_file, "a") as output_f:
         # Write header
         if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
-            output_f.write("probe_type,probe_ratio,avg_val_acc,avg_test_acc\n")
+            output_f.write("probe_type,avg_val_acc,avg_test_acc\n")
 
-        # Get all subfolder paths starting with "probing_ratio"
-        probing_ratios_subfolders = [os.path.join(folder_input_path, f) for f in os.listdir(folder_input_path) 
-                                    if os.path.isdir(os.path.join(folder_input_path, f)) and f.startswith("probing_ratio")]
+       
+        probe_exp_df_list = [] # List of tuples (Dataframe, exp_index)
 
-        # For each probing tr ratio
-        for subfolder in probing_ratios_subfolders:
-            probing_tr_ratio = subfolder.split("probing_ratio")[1]
-            probe_exp_df_list = [] # List of tuples (Dataframe, exp_index)
+        # Read all csv, one for each experience on which probing has been executed
+        for file in os.listdir(folder_input_path):
+            if file.endswith('.csv'):
+                probe_exp = int(file.split('.csv')[0].split('probe_exp_')[-1]) # Finds exp_idx from filename
+                df = pd.read_csv(os.path.join(folder_input_path, file))
+                probe_exp_df_list.append((df, probe_exp))
 
-            # Read all csv, one for each experience on which probing has been executed
-            for file in os.listdir(subfolder):
-                if file.endswith('.csv'):
-                    probe_exp = int(file.split('.csv')[0].split('probe_exp_')[-1]) # Finds exp_idx from filename
-                    df = pd.read_csv(os.path.join(subfolder, file))
-                    probe_exp_df_list.append((df, probe_exp))
-
-            # Find df with highest exp_index in probe_exp_df_list
-            final_df = max(probe_exp_df_list, key=lambda x: x[1])[0]
-            # Get final test and validation accuracies
-            final_avg_test_acc =  final_df['test_acc'].mean()
-            final_avg_val_acc = final_df['val_acc'].mean()
+        # Find df with highest exp_index in probe_exp_df_list
+        final_df = max(probe_exp_df_list, key=lambda x: x[1])[0]
+        # Get final test and validation accuracies
+        final_avg_test_acc =  final_df['test_acc'].mean()
+        final_avg_val_acc = final_df['val_acc'].mean()
 
 
-            output_f.write(f"{probe},{probing_tr_ratio},{final_avg_val_acc:.4f},{final_avg_test_acc:.4f}\n")
+        output_f.write(f"{probe},{final_avg_val_acc:.4f},{final_avg_test_acc:.4f}\n")
 
 
 def read_command_line_args():

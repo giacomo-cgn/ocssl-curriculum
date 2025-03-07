@@ -1,18 +1,18 @@
-from torch import nn
-from torch.utils.data import Dataset
+import torch
 
 class AbstractProbe():
     def __init__(self) -> None:
         pass
 
     def probe(self,
-              encoder: nn,
-              tr_dataset: Dataset,
-              test_dataset: Dataset,
-              val_dataset: Dataset = None,
+              tr_activations: torch.Tensor,
+              tr_labels: torch.Tensor,
+              val_activations: torch.Tensor,
+              val_labels: torch.Tensor,
+              test_activations: torch.Tensor,
+              test_labels: torch.Tensor,
               exp_idx: int = None, # Task index on which probing is executed, if None, we are in joint or upto probing
-              tr_samples_ratio: float = 1.0,
-              save_file: str = None
+              save_file: str = None,
               ):
         raise NotImplementedError
     

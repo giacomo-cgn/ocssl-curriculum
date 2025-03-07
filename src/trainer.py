@@ -154,8 +154,7 @@ class Trainer():
                     if (upto_tr_step_idx+1) % eval_every_steps == 0:
                         exec_probing(kwargs=intermediate_eval_dict["kwargs"], probes=intermediate_eval_dict["probes"],
                                         probing_benchmark=intermediate_eval_dict["benchmark"], encoder=self.ssl_model.get_encoder_for_eval(), 
-                                        pretr_exp_idx=eval_idx, probing_tr_ratio_arr=intermediate_eval_dict["probing_tr_ratio_arr"],
-                                        save_pth=self.save_pth)
+                                        pretr_exp_idx=eval_idx, save_pth=self.save_pth, device=self.device)
                         eval_idx += 1
                     self.ssl_model.train()
 

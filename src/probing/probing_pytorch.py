@@ -3,12 +3,9 @@ import copy
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-from torch.utils.data.dataset import Dataset
 import torch.nn.functional as F
 
 from .abstract_probe import AbstractProbe
-from ..utils import SupervisedDataset
 class ProbingPytorch(AbstractProbe):
     def __init__(self,                 
                  device: str = 'cpu',
@@ -55,23 +52,22 @@ class ProbingPytorch(AbstractProbe):
         return self.probe_type
     
     def probe(self,
-              encoder: nn,
-              tr_dataset: Dataset,
-              test_dataset: Dataset,
-              val_dataset: Dataset = None,
+              tr_activations: torch.Tensor,
+              tr_labels: torch.Tensor,
+              val_activations: torch.Tensor,
+              val_labels: torch.Tensor,
+              test_activations: torch.Tensor,
+              test_labels: torch.Tensor,
               exp_idx: int = None, # Task index on which probing is executed, if None, we are in joint or upto probing
-              tr_samples_ratio: float = 1.0,
               save_file: str = None,
-              dataset_name: str = 'cifar100',
               ):
         
-        if val_dataset is None:
+        if val_activations is None:
             raise ValueError("Validation dataset is required for PyTorch linear probing")
         
-        self.encoder = encoder.to(self.device)
+       
         self.exp_idx = exp_idx
         self.save_file = save_file
-        self.tr_samples_ratio = tr_samples_ratio
 
         if self.save_file is not None:
             with open(self.save_file, 'a') as f:
@@ -82,66 +78,23 @@ class ProbingPytorch(AbstractProbe):
                     else:
                         f.write(f'val_acc,test_acc\n')
         
-        # Prepare dataloaders
-        # Select only a random ratio of the train data for probing
-        used_ratio_samples = int(len(tr_dataset) * self.tr_samples_ratio)
-        tr_dataset, _ = random_split(tr_dataset, [used_ratio_samples, len(tr_dataset) - used_ratio_samples],
-                                     generator=torch.Generator().manual_seed(self.seed)) # Generator to ensure same splits
-        tr_dataset = SupervisedDataset(tr_dataset, dataset_name)
-        train_loader = DataLoader(dataset=tr_dataset, batch_size=self.mb_size, shuffle=True, num_workers=8)
-        test_dataset = SupervisedDataset(test_dataset, dataset_name)
-        test_loader = DataLoader(dataset=test_dataset, batch_size=self.mb_size, shuffle=False, num_workers=8)
-        if val_dataset is not None:
-            val_dataset = SupervisedDataset(val_dataset, dataset_name)
-            val_loader = DataLoader(dataset=val_dataset, batch_size=self.mb_size, shuffle=False, num_workers=8)
-
         with torch.no_grad():
+            tr_activations = nn.functional.normalize(tr_activations.to(self.device))
+            tr_labels = tr_labels.to(self.device)
+            val_activations = nn.functional.normalize(val_activations.to(self.device))
+            val_labels = val_labels.to(self.device)
+            test_activations = nn.functional.normalize(test_activations.to(self.device))
+            test_labels = test_labels.to(self.device)
 
-            # Put encoder in eval mode, as even with no gradient it could interfere with batchnorm
-            self.encoder.eval()
-
-            # Get encoder activations for tr dataloader
-            tr_activations_list = []
-            tr_labels_list = []
-            for inputs, labels in train_loader:
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
-                activations = self.encoder(inputs)
-                tr_activations_list.append(activations.detach())
-                tr_labels_list.append(labels.detach())
-            tr_activations = nn.functional.normalize(torch.cat(tr_activations_list, dim=0))
-            tr_labels = torch.cat(tr_labels_list, dim=0)
-
-            # Get encoder activations for val dataloader
-            val_activations_list = []
-            val_labels_list = []
-            for inputs, labels in val_loader:
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
-                activations = self.encoder(inputs)
-                val_activations_list.append(activations.detach())
-                val_labels_list.append(labels.detach())
-            val_activations = nn.functional.normalize(torch.cat(val_activations_list, dim=0))
-            val_labels = torch.cat(val_labels_list, dim=0)
-
-            # Get encoder activations for test dataloader
-            test_activations_list = []
-            test_labels_list = []
-            for inputs, labels in test_loader:
-                inputs, labels = inputs.to(self.device), labels.to(self.device)
-                activations = self.encoder(inputs)
-                test_activations_list.append(activations.detach())
-                test_labels_list.append(labels.detach())
-            test_activations = nn.functional.normalize(torch.cat(test_activations_list, dim=0))
-            test_labels = torch.cat(test_labels_list, dim=0)
-
-        num_classes = len(torch.unique(tr_labels))
-        if max(torch.unique(tr_labels)) > num_classes - 1:
-            # If only a subset of labels, rename them in [0, num_class] range
-            labels_set = set(torch.unique(tr_labels).tolist())
-            new_labels = list(range(len(labels_set)))
-            label_map = {k: v for k, v in zip(labels_set, new_labels)}
-            tr_labels = torch.tensor([label_map[l.item()] for l in tr_labels], dtype=torch.long).to(self.device)
-            val_labels = torch.tensor([label_map[l.item()] for l in val_labels], dtype=torch.long).to(self.device)
-            test_labels = torch.tensor([label_map[l.item()] for l in test_labels], dtype=torch.long).to(self.device)
+            num_classes = len(torch.unique(tr_labels))
+            if max(torch.unique(tr_labels)) > num_classes - 1:
+                # If only a subset of labels, rename them in [0, num_class] range
+                labels_set = set(torch.unique(tr_labels).tolist())
+                new_labels = list(range(len(labels_set)))
+                label_map = {k: v for k, v in zip(labels_set, new_labels)}
+                tr_labels = torch.tensor([label_map[l.item()] for l in tr_labels], dtype=torch.long).to(self.device)
+                val_labels = torch.tensor([label_map[l.item()] for l in val_labels], dtype=torch.long).to(self.device)
+                test_labels = torch.tensor([label_map[l.item()] for l in test_labels], dtype=torch.long).to(self.device)
 
 
         # Set up Linear Probe
@@ -204,7 +157,7 @@ class ProbingPytorch(AbstractProbe):
                     acc_correct += n_corr
                     acc_all += n_all
                     val_step += 1
-                    index += val_loader.batch_size
+                    index += self.mb_size
                     singelite = False
             
              # mean validation loss
@@ -257,7 +210,7 @@ class ProbingPytorch(AbstractProbe):
                 _test_acc = n_corr / n_all
                 acc_correct += n_corr
                 acc_all += n_all
-                index += test_loader.batch_size
+                index += self.mb_size
                 singelite = False
         
             # mean test loss
@@ -268,7 +221,7 @@ class ProbingPytorch(AbstractProbe):
 
         if self.save_file is not None:
             with open(self.save_file, 'a') as f:
-                if val_dataset is None:
+                if val_activations is None:
                     if self.exp_idx is not None:
                         f.write(f'{self.exp_idx},_,{test_acc:.4f}\n')
                     else:
