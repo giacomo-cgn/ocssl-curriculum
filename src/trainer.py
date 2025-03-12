@@ -101,6 +101,9 @@ class Trainer():
         sampler = RandomSampler(dataset, replacement=True, num_samples=int(1e10))
         data_loader = DataLoader(exp_data, batch_size=self.train_mb_size,  sampler=sampler, num_workers=8)
 
+        current_classes = exp_data.get_classes()
+
+
         self.ssl_model.train()
         self.strategy.train()
 
@@ -152,7 +155,6 @@ class Trainer():
                 # Check if have to evaluate IID model
                 if intermediate_eval_dict["status"]:
                     if (upto_tr_step_idx+1) % eval_every_steps == 0:
-                        current_classes = exp_data.get_classes()
                         exec_probing(kwargs=intermediate_eval_dict["kwargs"], probes=intermediate_eval_dict["probes"],
                                         probing_benchmark=intermediate_eval_dict["benchmark"], encoder=self.ssl_model.get_encoder_for_eval(), 
                                         pretr_exp_idx=eval_idx, save_pth=self.save_pth, device=self.device,
